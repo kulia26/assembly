@@ -1,40 +1,43 @@
+include init.asm
+
 stseg segment para stack 'stack'
 	db 64 dup ('stack')
 stseg ends
 
-dseg segment para public 'data' 
-	sum                    dw 0h
-	array                  dw 10 dup (0h)
-	array_size             db 10d
-	max                    dw 0h
-	min                    dw 0h
+dseg segment para public 'data'
+	array                  dw 2 dup (3 dup ('LH')); [i][j], i - пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, j - пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+	array_h                db 2d; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+	array_l                db 3d; пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+	element                dw '$$'
+	
+	el_i                   db 'i = $'
+	el_j                   db ' j = $'
+	not_found_s			   db 'not found$'
 	
 	not_print              dw 0
 	number                 dw 0
 	mult10                 dw 1d
 	div10                  dw 10000d
 	
-	buffer                 db 7, 'N', 7 dup('$'), '$'; buffer '6??????'+endline
+	buffer                 db 7, 'N', 7 dup('$'); buffer '6??????'+endline
+	string 				   db 7 dup ('$'), '$$'
 	
-	enter_start            db 'Enter element i = '
-	index                  db 7d
-	enter_end              db ' -32736..32767 (press e to ex): ', '$'
-	
-	s_sum				   db 'sum = $'
-	s_max				   db 'max = $'
-	s_min				   db 'min = $'
-	string 				   db 7 dup ('$')
 	
 	s_invalid              db 'error: not in -32736..32767 range$'
 	s_invalid_z            db 'error: sum not in -32736..32767 range$'
 	s_incorrect_err        db 'error: incorrect symbol$'
 	s_overflow             db 'overflow: sum not in -32736..32767 range$'
 	
+	enter_find             db 'What your looking for ?: $'
+	enter_start            db 'Enter element i = '
+	i                      db 0d
+	enter_middle           db ' j = '
+	j                      db 0d
+	enter_end              db ' -32736..32767 (press e to ex): ', '$'
+	
 	array_begin            db '[', '$'
 	array_end              db ']', '$'
 	separator              db ', ', '$'
-	your_array             db 'array: ', '$'
-	your_array_sorted      db 'sorted: ', '$'
 
 	endline                db 13d,10d,'$'   ;"\cr"
 	
@@ -42,80 +45,229 @@ dseg ends
 
 cseg segment para public 'code'
 	main proc far
-		assume cs: cseg, ds: dseg, ss: stseg
-		push ds
-		xor ax, ax
-		push ax
-		mov ax, dseg
-		mov ds, ax
+		init cseg, dseg, stseg
 		program_loop:
-		xor cx, cx; чистим счетчик
-		mov cl, array_size; счетчик в размер массива (8)
+		xor cx, cx; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		mov cl, 0d; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 0
 		
 			call push_to_array
 				jcxz exit;
 				jo program_loop;
-				
-			call reduce; считаем суму елементов
-				jo program_loop
-				
-			call write_sum
-			
-			call find_max; считаем суму елементов
-				
-			call write_max
-			
-			call find_min; считаем суму елементов
-			
-			call write_min
-			
-			call writeEndline
-			lea dx, your_array; ; write [ 
-			call write
-			
+			call read_element;
+				jcxz exit;
+				jo program_loop;
 			call write_array
-			
-			call sort;
-			
-			call writeEndline
-			lea dx, your_array_sorted; ; write [ 
-			call write
-			
-			call write_array
+			call find;
+				jcxz exit;
+				jo program_loop;
+
 			exit:
 				ret
 	main endp
 	
-	push_to_array proc near
-		push_loop:
-			dec cl; индекс последнего  = размер масива - 1
-			mov si, cx; адрес = начало + (индекс*размерность)
-			shl si, 1; * на 2, размер елемента 2 байта 
-			call writeEndline;пустую строку
-
-			add cl, '0'; c индекса делаем символ-цифру 
-			mov index, cl;
-			lea dx, enter_start; ; write "Enter i = "
+	write_array proc near
+		xor cx, cx
+		write_row_loop:
+		call writeEndline
+			mov ch, 0d;
+			lea dx, array_begin; ; write element
 				call write
-			sub cl, '0'; возвращаем индекс в нормальное состоЯние
-
-			call read
-			cmp buffer + 1, 0d; если ничего не ввели то выйти
-				je make_exit;
 			
-			call atoi
-				jo make_overflow
+			write_col_loop:	
 				
-			mov ax, number; add integer
-			mov array[si], ax;  to array
-			
-			call itoa; выведем число чтобы понЯть что там
-			call writeEndline;пустую строку
-			lea dx, string; ; write element
+				mov i, cl;
+				mov j, ch;
+				
+				xor ax, ax;
+				xor bx, bx;
+				xor dx, dx;
+				
+				mov bh, 2;
+				mov al, i;
+				mul bh;
+				mov bl, array_l;
+				mul bl;
+				xor bx, bx;
+				mov bx, ax; 2*4*i
+				
+				xor ax, ax;
+				mov dh, 2;
+				mov al, j;
+				mul dh; ax = 2*j
+				add bx, ax;
+				
+				mov ax, array[bx]
+				mov number, ax;
+				call itoa;
+				
+				
+				lea dx, string; ; write element
+				call write
+				
+		
+				inc ch
+				cmp ch, array_l
+					jne write_sep; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			lea dx, array_end; ; write element
+				call write
+			inc cl
+			cmp cl, array_h
+				jne write_row_loop; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			mov cx, 1d ; пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ jcxz
+		ret
+		
+			write_sep:
+			lea dx, separator; ; write element
+				call write
+			jmp write_col_loop
+	write_array endp
+	
+	find proc near
+		xor cx, cx;
+		xor di, di;
+		find_row_loop:
+			mov ch, 0d;
+			find_col_loop:	
+				
+				mov i, cl;
+				mov j, ch;
+				
+				xor ax, ax;
+				xor bx, bx;
+				xor dx, dx;
+				
+				mov bh, 2;
+				mov al, i;
+				mul bh;
+				mov bl, array_l;
+				mul bl;
+				xor bx, bx;
+				mov bx, ax; 2*4*i
+				
+				xor ax, ax;
+				mov dh, 2;
+				mov al, j;
+				mul dh; ax = 2*j
+				add bx, ax;
+				
+				mov ax, array[bx]
+				
+				cmp element, ax
+					je write_index
+				continue:
+				inc ch
+				cmp ch, array_l
+					jne find_col_loop; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				jmp continue_1
+				write_index:
+				inc di;
+				xor ax, ax;
+				mov al, i;
+				mov number, ax;
+				call itoa; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ
+				call writeEndline;пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+				lea dx, el_i; ; write element
+				call write
+				lea dx, string; ; write element
+				call write
+				
+				xor ax, ax;
+				mov al, j;
+				mov number, ax;
+				call itoa; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ
+				lea dx, el_j; ; write element
+				call write
+				lea dx, string; ; write element
+				call write
+				
+				jmp continue
+			continue_1:
+			inc cl
+			cmp cl, array_h
+				jne find_row_loop; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			mov cx, 1d ; пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ jcxz
+			cmp di, 0d;
+				je not_found;
+		ret
+			f_make_exit:
+			mov cx, 0;
+			ret
+			f_make_overflow:
+			mov cx, 0ffffh;
+			mov cx, 0ffffh;
+			ret
+			not_found:
+			call writeEndline;пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+			lea dx, not_found_s; ; write element
 			call write
-			cmp cx, 0d
-				jnz push_loop; повторЯем
-			mov cx, 1d;
+			ret
+	find endp
+	
+	push_to_array proc near
+		xor cx, cx;
+		push_row_loop:
+			mov ch, 0d;
+			push_col_loop:
+				; пїЅпїЅпїЅпїЅпїЅ = пїЅпїЅпїЅпїЅпїЅпїЅ + 2*(пїЅпїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅпїЅ*пїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅпїЅпїЅпїЅ + пїЅпїЅпїЅпїЅпїЅпїЅ_пїЅпїЅпїЅпїЅпїЅпїЅ)
+				; index = 2 * ( 4 * i + j )
+				; cl = i = array_h
+				; ch = j = array_l
+				
+				call writeEndline;пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+				add cl, '0'; c пїЅпїЅпїЅпїЅпїЅпїЅпїЅ i пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ
+				add ch, '0'; c пїЅпїЅпїЅпїЅпїЅпїЅпїЅ j пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ 
+				mov i, cl;
+				mov j, ch;
+				lea dx, enter_start; ; write "Enter i = "
+					call write
+				sub cl, '0'; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ i пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				sub ch, '0'; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ j пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				mov i, cl;
+				mov j, ch;
+
+				call read
+				cmp buffer + 1, 0d; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+					je make_exit;
+				
+				call atoi
+					jo make_overflow
+				
+				xor ax, ax;
+				xor bx, bx;
+				xor dx, dx;
+				
+				mov bh, 2;
+				mov al, i;
+				mul bh;
+				mov bl, array_l;
+				mul bl;
+				xor bx, bx;
+				mov bx, ax; 2*4*i
+				
+				xor ax, ax;
+				mov dh, 2;
+				mov al, j;
+				mul dh; ax = 2*j
+				add bx, ax;
+				
+				mov ax, number
+				mov array[bx], ax;  
+				
+				call itoa; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅ
+				call writeEndline;пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+				lea dx, string; ; write element
+				call write
+				
+				inc ch
+				cmp ch, array_l
+					jne push_col_loop; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			inc cl
+			cmp cl, array_h
+				jne push_row_loop; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			
+				
+			
+			mov cx, 1d ; пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ jcxz
 		ret
 			make_exit:
 			mov cx, 0;
@@ -126,145 +278,85 @@ cseg segment para public 'code'
 			ret
 	push_to_array endp
 	
-	reduce proc near
-		mov sum, 0d
-		xor bx, bx;
-		
-		mov cl, array_size; счетчик в размер массива (8)
-		r_loop:
-		dec cl; индекс последнего  = размер масива - 1
-		mov si, cx; адрес = начало + (индекс*размерность)
-		shl si, 1; * на 2, размер елемента 2 байта 
-		mov ax, array[si];  to array
-		add bx, ax;
-			jo reduce_overflow
-		mov sum, bx; записываем суму
-			cmp cl, 0d
-			jnz r_loop; повторЯем если индекс не равен 0
-		ret
-		reduce_overflow:
-			jmp overflow;
-			ret
-	reduce endp
-	
-	find_max proc near
-		mov ax, array[0];  нехай перший максимальний
-		mov max, ax;
-		xor bx, bx;
-		
-		mov cl, array_size; счетчик в размер массива (8)
-		fm_loop:
-		dec cl; индекс последнего  = размер масива - 1
-		mov si, cx; адрес = начало + (индекс*размерность)
-		shl si, 1; * на 2, размер елемента 2 байта 
-		mov ax, array[si];  ax - текущий елемент
-		cmp max, ax
-			jl change; если текщий максимум меньше елемента,
-		cont:
-			cmp cl, 0d
-			jnz fm_loop; повторЯем если индекс не равен 0
-		ret
-		change:
-			mov max, ax; теперь текущий максимум равен елементу
-			jmp cont;
-	find_max endp
-	
-	find_min proc near
-		mov ax, array[0];  нехай перший максимальний
-		mov min, ax;
-		xor bx, bx;
-		
-		mov cl, array_size; счетчик в размер массива (8)
-		fmin_loop:
-		dec cl; индекс последнего  = размер масива - 1
-		mov si, cx; адрес = начало + (индекс*размерность)
-		shl si, 1; * на 2, размер елемента 2 байта 
-		mov ax, array[si];  ax - текущий елемент
-		cmp min, ax
-			jg m_change; если текщий максимум меньше елемента,
-		m_cont:
-			cmp cl, 0d
-			jnz fmin_loop; повторЯем если индекс не равен 0
-		ret
-		m_change:
-			mov min, ax; теперь текущий максимум равен елементу
-			jmp m_cont;
-	find_min endp
-	
-	sort proc near
-		sort_out_loop:
-		xor bx, bx;
+	read_element proc near
 		xor cx, cx;
-		mov cl, array_size; счетчик в размер массива (8)
-		sort_loop:
-		dec cl; индекс последнего  = размер масива - 1
-		mov si, cx; адрес = начало + (индекс*размерность)
-		shl si, 1; * на 2, размер елемента 2 байта 
-		mov ax, array[si];  ax - текущий елемент
-		mov bx, array[si - 2];  bx - следующий елемент
-		cmp bx, ax; если ах ,больше бх
-			jl shift; поменЯть местами
-		sort_cont:
-			cmp cl, 2d
-			jae sort_loop; повторЯем если индекс больше 1
+		call writeEndline;пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+		add cl, '0'; c пїЅпїЅпїЅпїЅпїЅпїЅпїЅ i пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ
+		add ch, '0'; c пїЅпїЅпїЅпїЅпїЅпїЅпїЅ j пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅ 
+		lea dx, enter_find; ; write "Enter i = "
+		call write
+		call read
+		cmp buffer + 1, 0d; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+			je r_make_exit;
+		call atoi
+			jo r_make_overflow
+		mov ax, number
+		mov element, ax;  
 		ret
-		shift:
-			mov array[si], bx;
-			mov array[si - 2], ax;
-			jmp sort_out_loop;
-	sort endp
+		r_make_exit:
+		mov cx, 0;
+		ret
+		r_make_overflow:
+		mov cx, 0ffffh;
+		mov cx, 0ffffh;
+		ret
+	read_element endp
 	
 	atoi proc near
 		push cx;
 		push si;
-		mov mult10, 1d ; чистим счетчик разрЯдов (1, 10, 100,...)
-		mov number, 0d ; чистим переменную с результатом
-		xor bx, bx; чистим
-		xor ax, ax; чистим
-		mov cx, 10d ; множитель
-		lea di, number; в di адрес куда ложить результат
-		mov al, 45d; знак пробела
+		mov mult10, 1d ; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (1, 10, 100,...)
+		mov number, 0d ; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		xor bx, bx; пїЅпїЅпїЅпїЅпїЅпїЅ
+		xor ax, ax; пїЅпїЅпїЅпїЅпїЅпїЅ
+		xor si, si; пїЅпїЅпїЅпїЅпїЅпїЅ
+		mov cx, 10d ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		lea di, number; пїЅ di пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		mov al, 45d; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 		lea si, buffer
-		inc si; индекс начала - 1 показывает
-		mov bl, [si]; количество елементов в буффере
-		cmp [si + 1], al; если минус впереди надо подготовитьсЯ
-			jz minus; пригаем
+		inc si; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ - 1 пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		mov bl, [si]; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+		cmp [si + 1], al; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			je minus; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		
 		cmp bl, 5d
 			jo error_invalid;
 		do:
-			xor ax, ax; чистим
-			xor dx, dx; чистим
-			mov al, [si + bx]; кидаем в al елемент, идем с конца
-			sub al, '0'; с символа ASCII получаем цифру
-			cmp al, 9; если число больше 9 то это не число
+			xor ax, ax; пїЅпїЅпїЅпїЅпїЅпїЅ
+			xor dx, dx; пїЅпїЅпїЅпїЅпїЅпїЅ
+			mov al, [si + bx]; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ al пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ
+			sub al, '0'; пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ ASCII пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+			cmp al, 9d; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ 9 пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
 				ja error_incorrect
-			imul mult10; множим цифру на разрЯд (1,10,100,... ) испольхуетьсЯ dx !
+			imul mult10; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (1,10,100,... ) пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ dx !
 				js error_invalid;
 			cmp dx, 0000h
 				jne error_invalid;
 				jo error_invalid;
-			add [di], ax; суммируем результат
-				jo error_invalid;если значение больше чем 32767 то ошибка
-				js error_invalid;если значение отритцательное значит все плохо
-			mov ax, mult10; кидаем в ax текущий множитель
-			mul cx; увеличиваем множитель в 10 раз
-			mov mult10, ax; кидаем обратно в переменную
-			dec bl; уменьшаем счетчик
-				jnz do; повторЯем, если счетчик не равен 0
+			add [di], ax; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				jo error_invalid;пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ 32767 пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+				js error_invalid;пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+			mov ax, mult10; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ ax пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			cmp ax, 10000d
+				je next
+			mul cx; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 10 пїЅпїЅпїЅ
+			mov mult10, ax; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			next:
+			dec bl; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				jnz do; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ 0
 			mov al, 45d;
-			cmp [si], al; если минус впереди числа то пригаем
+			cmp [si], al; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 				jz neg_number;
 			pop si
 			pop cx
 			
 		ret 
 		neg_number:
-			cmp [di], 7fe0h; если число с минусом а по модулю > 32736, то ошибка
+			cmp [di], 7fe0h; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ > 32736, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 				ja error_invalid;
-			mov ax, number ; вынимаем
-			neg ax ; делаем отритцательное из положительного
-			mov number, ax; кидаем обратно
+			mov ax, number ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			neg ax ; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			mov number, ax; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 			pop si
 			pop cx
 			
@@ -273,6 +365,7 @@ cseg segment para public 'code'
 			call writeEndline;
 			lea dx, s_invalid; ; write "error invalid"
 			call write;
+			call writeEndline;
 			jmp makeOF
 		error_incorrect:
 			call writeEndline;
@@ -280,9 +373,9 @@ cseg segment para public 'code'
 			call write;
 			jmp makeOF
 		minus:
-			; надо сделать подготовку если минус впереди, уменьшить длину, и количество
-			inc si; количество елементов в буффере
-			sub bl, 1h; уменьшаем количество, потому что один из знаков это "-"
+			; пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			inc si; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+			sub bl, 1h; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ "-"
 			jmp do;
 		makeOF:
 			pop si
@@ -294,49 +387,52 @@ cseg segment para public 'code'
 
 	itoa proc near
 		push cx
+		push di
+		xor cx, cx
+		xor di, di
 		lea di, string;
 		mov cx, 5d;
 		mov bx, 10d;
 		mov not_print, 0;
-		cmp number, 0h;число меньше нулЯ?
-			jl add_minus;если меньше нулЯ то пригаем 
-		cmp number, 0h;число меньше нулЯ?
-			je null;если нуль то выводим нуль
-		make:;работаем только с положительным числом, минус уже написали
+		cmp number, 0h;пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ?
+			jl add_minus;пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ 
+		cmp number, 0h;пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ?
+			je null;пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+		make:;пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 			mov ax, number;
 			cmp ax, 0h;
 				je zero;
 			xor dx, dx;
-			div div10; делим на 10 000, 1000, 100, ...
-			mov number, dx;	теперь остаток это новое число
+			div div10; пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ 10 000, 1000, 100, ...
+			mov number, dx;	пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
 			cmp ax, 0;
 				jne set_not_print;
 			start:
-			add ax, '0';делаем из цифры  ->> ascii
+			add ax, '0';пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ  ->> ascii
 			xor dx, dx;
 			cmp not_print, 0d
 				je print2
 			print:
-			mov [di], ax; кидаем в строку
+			mov [di], ax; пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
 				jmp the_end
 			print2:
 			dec di
 			the_end:
 			xor dx, dx;
 			mov ax, div10; //
-			div bx;        // уменьшаем разрЯд-делитель в 10 раз
+			div bx;        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ 10 пїЅпїЅпїЅ
 			mov div10, ax; //
-			inc di; двигаемсЯ на следующее место в строке
-			dec cx; уменьшаем счетчик
-				jnz make; прыгаем если счетчик не равен нулю
+			inc di; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+			dec cx; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+				jnz make; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
 				jmp itoa_exit;
 		add_minus:
 			xor ax, ax;
 			mov al, 2dh;
-			mov [di], ax;добавим минус в переди
-			lea di, string + 1; начало на первую цифру
-			neg number; сделаем отрицательное положительным 
-			jmp make; прыгнем
+			mov [di], ax;пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
+			inc di пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
+			neg number; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 
+			jmp make; пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 		zero:
 			mov ax, '0'
 			mov [di], ax;
@@ -348,6 +444,7 @@ cseg segment para public 'code'
 			mov ax, '$'
 			mov [di], ax;
 			mov div10, 10000d;
+			pop di
 			pop cx
 			ret
 		set_not_print:
@@ -360,16 +457,6 @@ cseg segment para public 'code'
 			dec cx;
 			jmp itoa_exit
 	itoa endp
-
-	overflow proc near
-		call writeEndline;
-		lea dx, s_overflow
-		mov ah, 9d
-		int 21h
-		add ax, 30000d;
-		add ax, 30000d;
-		ret
-	overflow endp
 	
 	read proc near
 		lea dx, buffer
@@ -378,79 +465,12 @@ cseg segment para public 'code'
 		ret
 	read endp
 	
-	write_array proc near
-		
-		lea dx, array_begin; ; write [ 
-			call write
-		
-		xor bx, bx;
-		mov cl, array_size; счетчик в размер массива (8)
-		wa_loop:
-		dec cl; индекс последнего  = размер масива - 1
-		mov si, cx; адрес = начало + (индекс*размерность)
-		shl si, 1; * на 2, размер елемента 2 байта 
-		mov ax, array[si];  to array
-		mov number, ax
-		call itoa
-		lea dx, string
-		call write
-		cmp cl, 0d
-			jne wa_separator
-		wa_end:
-			cmp cl, 0d
-			jnz wa_loop; повторЯем если индекс не равен 0
-		lea dx, array_end; ; write [ 
-			call write
-		;call writeEndline
-		ret
-		wa_separator:
-		lea dx, separator
-		call write
-		jmp wa_end
-	write_array endp
 	
 	write proc near
 		mov ah, 9
 		int 21h
 		ret
 	write endp
-	
-	write_sum proc near
-		mov ax, sum
-			mov number, ax
-			call itoa; выведем суму
-			call writeEndline;пустую строку
-			lea dx, s_sum; ; write element
-			call write
-			lea dx, string; ; write element
-			call write
-			call writeEndline;пустую строку
-			ret
-	write_sum endp
-	
-	write_max proc near
-		mov ax, max
-			mov number, ax
-			call itoa; выведем суму
-			lea dx, s_max; ; write element
-			call write
-			lea dx, string; ; write element
-			call write
-			call writeEndline;пустую строку
-			ret
-	write_max endp
-	
-	write_min proc near
-			mov ax, min
-			mov number, ax
-			call itoa; выведем суму
-			;call writeEndline;пустую строку
-			lea dx, s_min; ; write element
-			call write
-			lea dx, string; ; write element
-			call write
-			ret
-	write_min endp
 	
 	writeEndline proc near
 		lea dx, endline
