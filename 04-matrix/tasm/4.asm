@@ -5,9 +5,9 @@ stseg segment para stack 'stack'
 stseg ends
 
 dseg segment para public 'data'
-	array                  dw 2 dup (3 dup ('LH')); [i][j], i - �������, j - �������
-	array_h                db 2d; ���������� �������
-	array_l                db 3d; ����� �������
+	array                  dw 100 dup ('LH'); [i][j], i - �������, j - �������
+	array_h                db 0; ���������� �������
+	array_l                db 0; ����� �������
 	element                dw '$$'
 	
 	el_i                   db 'i = $'
@@ -27,13 +27,16 @@ dseg segment para public 'data'
 	s_invalid_z            db 'error: sum not in -32736..32767 range$'
 	s_incorrect_err        db 'error: incorrect symbol$'
 	s_overflow             db 'overflow: sum not in -32736..32767 range$'
+	s_size_of              db 'number not in range 1..20$'
 	
 	enter_find             db 'What your looking for ?: $'
 	enter_start            db 'Enter element i = '
 	i                      db 0d
 	enter_middle           db ' j = '
 	j                      db 0d
-	enter_end              db ' -32736..32767 (press e to ex): ', '$'
+	enter_end              db ' -32767..32767 (press e to ex): ', '$'
+	enter_height           db 'Enter height (rows num) 1..10 : ', '$'
+	enter_length           db 'Enter length (columns num) 1..10 : ', '$'
 	
 	array_begin            db '[', '$'
 	array_end              db ']', '$'
@@ -49,7 +52,9 @@ cseg segment para public 'code'
 		program_loop:
 		xor cx, cx; ������ �������
 		mov cl, 0d; ������� � 0
-		
+			call push_size;
+				jcxz exit
+				jo program_loop;
 			call push_to_array
 				jcxz exit;
 				jo program_loop;
@@ -64,6 +69,52 @@ cseg segment para public 'code'
 			exit:
 				ret
 	main endp
+	
+	push_size proc near
+		xor cx, cx; ������ �������
+		call writeEndline
+		lea dx, enter_height; ; write [ 
+			call write
+		call read
+		cmp buffer + 1, 0d; ���� ������ �� ����� �� �����
+			je ps_exit;
+		call atoi
+			cmp number, 10d
+			ja ps_of;
+			cmp number, 1d
+			jl ps_of;
+		mov cx, number; ������� � ������ ������� (8)
+		mov array_h, cl;
+		
+		call writeEndline
+		lea dx, enter_length; ; write [ 
+			call write
+		call read
+		cmp buffer + 1, 0d; ���� ������ �� ����� �� �����
+			je ps_exit;
+		call atoi
+			cmp number, 10d
+			ja ps_of;
+			cmp number, 1d
+			jl ps_of;
+		mov cx, number; ������� � ������ ������� (8)
+		mov array_l, cl;
+		
+		mov cx, 1d;
+		ret
+		ps_exit:
+			mov cx, 0d
+			ret
+		ps_of:
+			call writeEndline;
+			lea dx, s_size_of
+			mov ah, 9d
+			int 21h
+			add ax, 30000d;
+			add ax, 30000d;
+			mov cx, 1
+			ret
+	push_size endp 
 	
 	write_array proc near
 		xor cx, cx
@@ -309,15 +360,14 @@ cseg segment para public 'code'
 		mov number, 0d ; ������ ���������� � �����������
 		xor bx, bx; ������
 		xor ax, ax; ������
-		xor si, si; ������
 		mov cx, 10d ; ���������
 		lea di, number; � di ����� ���� ������ ���������
-		mov al, 45d; ���� ������
+		mov al, 45d; ���� �������
 		lea si, buffer
 		inc si; ������ ������ - 1 ����������
 		mov bl, [si]; ���������� ��������� � �������
 		cmp [si + 1], al; ���� ����� ������� ���� �������������
-			je minus; �������
+			jz minus; �������
 		
 		cmp bl, 5d
 			jo error_invalid;
@@ -326,7 +376,7 @@ cseg segment para public 'code'
 			xor dx, dx; ������
 			mov al, [si + bx]; ������ � al �������, ���� � �����
 			sub al, '0'; � ������� ASCII �������� �����
-			cmp al, 9d; ���� ����� ������ 9 �� ��� �� �����
+			cmp al, 9; ���� ����� ������ 9 �� ��� �� �����
 				ja error_incorrect
 			imul mult10; ������ ����� �� ������ (1,10,100,... ) ������������� dx !
 				js error_invalid;
@@ -335,37 +385,31 @@ cseg segment para public 'code'
 				jo error_invalid;
 			add [di], ax; ��������� ���������
 				jo error_invalid;���� �������� ������ ��� 32767 �� ������
-				js error_invalid;���� �������� �������������� ������ ��� �����
 			mov ax, mult10; ������ � ax ������� ���������
-			cmp ax, 10000d
-				je next
 			mul cx; ����������� ��������� � 10 ���
 			mov mult10, ax; ������ ������� � ����������
-			next:
 			dec bl; ��������� �������
 				jnz do; ���������, ���� ������� �� ����� 0
 			mov al, 45d;
 			cmp [si], al; ���� ����� ������� ����� �� �������
-				jz neg_number;
+				je neg_number;
 			pop si
 			pop cx
 			
 		ret 
 		neg_number:
-			cmp [di], 7fe0h; ���� ����� � ������� � �� ������ > 32736, �� ������
+			cmp [di], 8000h; ���� ����� � ������� � �� ������ > 32768, �� ������
 				ja error_invalid;
 			mov ax, number ; ��������
 			neg ax ; ������ �������������� �� ��������������
 			mov number, ax; ������ �������
 			pop si
 			pop cx
-			
 			ret
 		error_invalid:	
 			call writeEndline;
 			lea dx, s_invalid; ; write "error invalid"
 			call write;
-			call writeEndline;
 			jmp makeOF
 		error_incorrect:
 			call writeEndline;

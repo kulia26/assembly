@@ -11,6 +11,8 @@ dseg segment para public 'data'
 	z                      dw 0h
 	x                      dw 0h
 	y                      dw 0h
+	ost                    dw 0h
+	divisor                dw 0h
 	
 	not_print              dw 0
 	number                 dw 0
@@ -29,7 +31,10 @@ dseg segment para public 'data'
 	s_invalid_z            db 'error: Z not in -32736..32767 range$'
 	s_incorrect_err        db 'error: incorrect symbol$'
 	s_overflow             db 'overflow: Z not in -32736..32767 range$'
-	s_result               db 'result:$'
+	s_overflow1            db 'overflow: x*y not in -32736..32767 range$'
+	s_result               db 'z = $'
+	plus_s                 db ' + $'
+	div_s                  db '/$'
 
 	endline                db 13d,10d,'$'   ;"\cr"
 	
@@ -78,9 +83,31 @@ cseg segment para public 'code'
 			lea dx, string; ; write "Enter x"
 			call write
 			
+			cmp ost, 0;
+				jnz write_ost
+			
 			jmp program_loop
 			exit:
 				ret
+			write_ost:
+				xor ax, ax;
+				mov ax, ost
+				mov number, ax
+				call itoa
+				lea dx, plus_s; ; write "целое"
+				call write
+				lea dx, string; ; write "целое"
+				call write
+				lea dx, div_s; ; write "целое"
+				call write
+				xor ax, ax
+				mov ax, divisor;
+				mov number, ax;
+				call itoa;
+				lea dx, string;
+				call write
+			jmp program_loop
+			
 	main endp
 	
 	atoi proc near
@@ -108,6 +135,16 @@ cseg segment para public 'code'
 		add ax, 30000d;
 		ret
 	overflow endp
+	
+	overflow1 proc near
+		call writeEndline;
+		lea dx, s_overflow1
+		mov ah, 9d
+		int 21h
+		add ax, 30000d;
+		add ax, 30000d;
+		ret
+	overflow1 endp
 	
 	read_x proc near
 		lea dx, buffer
